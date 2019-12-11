@@ -1,2 +1,2 @@
-# OTRS-Slack
-OTRS-Slack integration 
+# OTRS-Teams
+Microsoft Teams integration for OTRS
