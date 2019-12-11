@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<otrs_config version="2.0" init="Application">
+      <Setting Name="TeamsNotification::QueueToWebhookURL" Required="0" Valid="1">
+        <Description Translatable="1">Teams Webhook URLs</Description>
+        <Navigation>Teams::API</Navigation>
+        <Value>
+            <Hash>
+                <Item Key="Queue">Raw</Item>
+            </Hash>
+        </Value>
+    </Setting>
+  <Setting Name="Ticket::EventModulePost###111-TeamsNotification" Required="0" Valid="1">
+      <Description Translatable="1">Sends notification to Microsoft Teams.</Description>
+      <Navigation>Core::Ticket</Navigation>
+      <Value>
+          <Hash>
+              <Item Key="Module">Kernel::System::Ticket::Event::TeamsNotification</Item>
+              <Item Key="Event">(ArticleCreate)</Item>
+          </Hash>
+      </Value>
+  </Setting>
+</otrs_config>
+
+
