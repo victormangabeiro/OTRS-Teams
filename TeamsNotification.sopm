@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<otrs_package version="1.1">
+    <Name>TeamsNotification</Name>
+    <Version>1.0.0</Version>
+    <Framework>6.0.x</Framework>
+    <Vendor>meisterheister</Vendor>
+    <URL>https://github.com/meisterheister/</URL>
+    <License>GNU AFFERO GENERAL PUBLIC LICENSE Version 3, November 2007</License>
+    <ChangeLog Version="1.0.0" Date="2019-12-11 14:00:00">Initial release.</ChangeLog>
+    <Description Lang="en">
+Provides an event based module to send a notification to a Microsoft Teams webhook. A webhook per Teams channel is needed. The webhook URL is choosen based on the queue it was associated with. This association is done in System Config item TeamsNotification::QueueToWebhookURL.
+
+Follow the below link on how to create a webhook:
+https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook
+    </Description>
+    <PackageIsVisible>1</PackageIsVisible>
+    <PackageIsDownloadable>1</PackageIsDownloadable>
+    <PackageIsRemovable>1</PackageIsRemovable>
+    <BuildDate>?</BuildDate>
+    <BuildHost>?</BuildHost>
+
+    <IntroInstall Type="post" Lang="en" Title="Thank you!">Thank you for installing the TeamsNotification module.</IntroInstall>
+    
+    <Filelist>
+        <File Permission="644" Location="Kernel/Config/Files/XML/TeamsNotification.xml"></File>
+        <File Permission="644" Location="Kernel/System/Ticket/Event/TeamsNotification.pm"></File>
+    </Filelist>
+</otrs_package>
