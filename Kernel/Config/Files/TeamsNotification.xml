@@ -1,22 +1,74 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <otrs_config version="2.0" init="Application">
-      <Setting Name="TeamsNotification::QueueToWebhookURL" Required="0" Valid="1">
+    <Setting Name="TeamsNotification::QueueToWebhookURL" Required="0" Valid="1">
         <Description Translatable="1">Teams Webhook URLs</Description>
         <Navigation>Teams::API</Navigation>
         <Value>
             <Hash>
-                <Item Key="Queue">Raw</Item>
+                <Item Key="Queue">URL</Item>
             </Hash>
         </Value>
     </Setting>
-  <Setting Name="Ticket::EventModulePost###111-TeamsNotification" Required="0" Valid="1">
-      <Description Translatable="1">Sends notification to Microsoft Teams.</Description>
-      <Navigation>Core::Ticket</Navigation>
-      <Value>
-          <Hash>
-              <Item Key="Module">Kernel::System::Ticket::Event::TeamsNotification</Item>
-              <Item Key="Event">(ArticleCreate)</Item>
-          </Hash>
-      </Value>
-  </Setting>
+    <Setting Name="TeamsNotification::SenderType" Required="0" Valid="1">
+        <Description Translatable="1">Valid article sender types. 0 = disabled, 1 = enabled</Description>
+        <Navigation>Teams::API</Navigation>
+        <Value>
+            <Hash>
+                <Item Key="customer">1</Item>
+                <Item Key="agent">0</Item>
+                <Item Key="system">0</Item>
+            </Hash>
+        </Value>
+    </Setting>
+    <Setting Name="TeamsNotification::TicketType" Required="0" Valid="1">
+        <Description Translatable="1">Valid ticket types. 0 = disabled, 1 = enabled</Description>
+        <Navigation>Teams::API</Navigation>
+        <Value>
+            <Hash>
+                <Item Key="ServiceRequest">1</Item>
+                <Item Key="Incident">1</Item>
+                <Item Key="Task">0</Item>
+            </Hash>
+        </Value>
+    </Setting>
+    <Setting Name="TeamsNotification::NotificationColor" Required="0" Valid="1">
+        <Description Translatable="1">Set priority name and color. The color must be a hex value.</Description>
+        <Navigation>Teams::API</Navigation>
+        <Value>
+            <Hash>
+                <Item Key="5 very high">FF505E</Item>
+                <Item Key="4 high">FFAAAA</Item>
+                <Item Key="default">CDCDCD</Item>
+            </Hash>
+        </Value>
+    </Setting>
+    <Setting Name="TeamsNotification::NotificationView" Required="0" Valid="1">
+        <Description Translatable="1">Enable sending notifications to Teams.</Description>
+        <Navigation>Teams::API</Navigation>
+        <Value>
+            <Item ValueType="Select" SelectedID="never">
+                <Item ValueType="Option" Value="large" Translatable="1">Large</Item>
+                <Item ValueType="Option" Value="medium" Translatable="1">Medium</Item>
+                <Item ValueType="Option" Value="small" Translatable="1">Small</Item>
+                <Item ValueType="Option" Value="never" Translatable="1">Disabled</Item>
+            </Item>
+        </Value>
+    </Setting>
+    <Setting Name="TeamsNotification::NotificationImage" Required="0" Valid="1">
+        <Description Translatable="1">Set path to image. If not set the default image will be the one set as AgentLoginLogo.</Description>
+        <Navigation>Teams::API</Navigation>
+        <Value>
+            <Item ValueType="String" ValueRegex=""></Item>
+        </Value>
+    </Setting>
+    <Setting Name="Ticket::EventModulePost###111-TeamsNotification" Required="0" Valid="1">
+        <Description Translatable="1">Sends notification based on the event type to Microsoft Teams.</Description>
+        <Navigation>Core::Ticket</Navigation>
+        <Value>
+            <Hash>
+                <Item Key="Module">Kernel::System::Ticket::Event::TeamsNotification</Item>
+                <Item Key="Event">(ArticleCreate)</Item>
+            </Hash>
+        </Value>
+    </Setting>
 </otrs_config>
