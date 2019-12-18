@@ -125,7 +125,7 @@ sub Run {
 	for my $TicketType ( sort keys %TicketTypes )   
 	{
 		if ( $TicketType eq $Ticket{Type}
-             && $SenderTypes{$TicketType} == 0 ) { 
+             && $TicketTypes{$TicketType} == 0 ) { 
                 $Kernel::OM->Get('Kernel::System::Log')->Log(
                     Priority => 'notice',
                     Message  => "Do not run for Ticket Type $TicketType."
