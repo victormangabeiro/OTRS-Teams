@@ -13,18 +13,21 @@ use strict;
 use utf8;
 use Encode;
 use warnings;
+use vars qw(@ISA);
+use Data::Dumper;
 
-$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME}=0;
+$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 0;
 
 use LWP::UserAgent;
 use HTTP::Request::Common;
+use Kernel::System::Ticket::Article;
 
 our @ObjectDependencies = qw(
-    Kernel::Config
-    Kernel::System::Log
-    Kernel::System::Ticket
-    Kernel::System::Ticket::Article
-    Kernel::System::User
+  Kernel::Config
+  Kernel::System::Log
+  Kernel::System::Ticket
+  Kernel::System::Ticket::Article
+  Kernel::System::User
 );
 
 sub new {
@@ -34,19 +37,24 @@ sub new {
     my $Self = {};
     bless( $Self, $Type );
 
+    @ISA = qw(
+      Kernel::System::Ticket::Article
+    );
+
     return $Self;
 }
 
 sub Run {
     my ( $Self, %Param ) = @_;
-    my $LogObject     = $Kernel::OM->Get('Kernel::System::Log');
-    my $TicketObject  = $Kernel::OM->Get('Kernel::System::Ticket');
-    my $ArticleObject = $Kernel::OM->Get('Kernel::System::Ticket::Article');
-    my $UserObject    = $Kernel::OM->Get('Kernel::System::User');
-    my $ConfigObject  = $Kernel::OM->Get('Kernel::Config');
+    my $LogObject    = $Kernel::OM->Get('Kernel::System::Log');
+    my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+    my $UserObject   = $Kernel::OM->Get('Kernel::System::User');
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+    my $JSONObject   = $Kernel::OM->Get('Kernel::System::JSON');
 
     # check if Notification module should run
-    my $ViewNotification = $ConfigObject->Get('TeamsNotification::NotificationView');
+    my $ViewNotification =
+      $ConfigObject->Get('TeamsNotification::NotificationView');
     if ( $ViewNotification eq 'never' ) {
         return;
     }
@@ -78,249 +86,309 @@ sub Run {
     }
 
     # get ticket attribute matches
-    my %Article = $ArticleObject->ArticleGet(
-        ArticleID    => $Param{Data}->{ArticleID},
-        TicketID     => $Param{Data}->{TicketID},
-        From         => $Param{Data}->{From},
-        Body         => $Param{Data}->{From},
-        SenderType   => $Param{Data}->{SenderType},
+    my %Article = $TicketObject->ArticleGet(
+        ArticleID  => $Param{Data}->{ArticleID},
+        TicketID   => $Param{Data}->{TicketID},
+        From       => $Param{Data}->{From},
+        Body       => $Param{Data}->{From},
+        SenderType => $Param{Data}->{SenderType},
     );
     my %Ticket = $TicketObject->TicketGet(
         TicketID     => $Param{Data}->{TicketID},
         Type         => $Param{Data}->{Type},
         TicketNumber => $Param{Data}->{TicketNumber},
         Title        => $Param{Data}->{Title},
-        Queue        => $Param{Data}->{Queue},        
+        Queue        => $Param{Data}->{Queue},
         State        => $Param{Data}->{State},
         OwnerID      => $Param{Data}->{OwnerID},
         Priority     => $Param{Data}->{Priority},
     );
+
     # get agent name
     $Ticket{UserName} = $UserObject->UserName( UserID => $Ticket{OwnerID} );
 
     # system config vars
-    my $TicketHook  = $ConfigObject->Get('Ticket::Hook');
-       $TicketHook .= $ConfigObject->Get('Ticket::HookDivider');
+    my $TicketHook = $ConfigObject->Get('Ticket::Hook');
+    $TicketHook .= $ConfigObject->Get('Ticket::HookDivider');
     my $SystemFQDN  = $ConfigObject->Get('FQDN');
     my $SystemHTTP  = $ConfigObject->Get('HttpType');
     my $SystemAlias = $ConfigObject->Get('ScriptAlias');
     my $WebPath     = $ConfigObject->Get('Frontend::WebPath');
 
     # run for defined Sender Types only
-    my %SenderTypes = %{ $ConfigObject->Get( 'TeamsNotification::SenderType' ) };
-	for my $SenderType ( sort keys %SenderTypes )   
-	{
-		if ( $SenderType eq $Article{SenderType}
-             && $SenderTypes{$SenderType} == 0 ) { 
-                $Kernel::OM->Get('Kernel::System::Log')->Log(
-                    Priority => 'notice',
-                    Message  => "Do not run for Sender Type $SenderType."
-                );
-                return;
-        }    
-	}
+    my %SenderTypes = %{ $ConfigObject->Get('TeamsNotification::SenderType') };
+    for my $SenderType ( sort keys %SenderTypes ) {
+        if (   $SenderType eq $Article{SenderType}
+            && $SenderTypes{$SenderType} == 0 )
+        {
+            $Kernel::OM->Get('Kernel::System::Log')->Log(
+                Priority => 'notice',
+                Message  => "Do not run for Sender Type $SenderType."
+            );
+            return;
+        }
+    }
 
     # run for defined Ticket Types only
-    my %TicketTypes = %{ $ConfigObject->Get( 'TeamsNotification::TicketType' ) };
-	for my $TicketType ( sort keys %TicketTypes )   
-	{
-		if ( $TicketType eq $Ticket{Type}
-             && $TicketTypes{$TicketType} == 0 ) { 
-                $Kernel::OM->Get('Kernel::System::Log')->Log(
-                    Priority => 'notice',
-                    Message  => "Do not run for Ticket Type $TicketType."
-                );
-                return;
-        }    
-	}
+    my %TicketTypes = %{ $ConfigObject->Get('TeamsNotification::TicketType') };
+    for my $TicketType ( sort keys %TicketTypes ) {
+        if (   $TicketType eq $Ticket{Type}
+            && $TicketTypes{$TicketType} == 0 )
+        {
+            $Kernel::OM->Get('Kernel::System::Log')->Log(
+                Priority => 'notice',
+                Message  => "Do not run for Ticket Type $TicketType."
+            );
+            return;
+        }
+    }
 
     # get WebHookURL for Queue
     my $WebhookURL;
-    my %WebhookURLs = %{ $ConfigObject->Get( 'TeamsNotification::QueueToWebhookURL' ) };
-	for my $WebHookQueue ( sort keys %WebhookURLs )   
-	{
-		if ( $Ticket{Queue} eq $WebHookQueue ) {
-		    $WebhookURL = $WebhookURLs{$WebHookQueue};
-		    $Kernel::OM->Get('Kernel::System::Log')->Log(
-                    Priority => 'notice',
-                    Message  => "Run WebHook for Queue $WebHookQueue"
-                );
+    my %WebhookURLs =
+      %{ $ConfigObject->Get('TeamsNotification::QueueToWebhookURL') };
+    for my $WebHookQueue ( sort keys %WebhookURLs ) {
+        if ( $Ticket{Queue} eq $WebHookQueue ) {
+            $WebhookURL = $WebhookURLs{$WebHookQueue};
+            $Kernel::OM->Get('Kernel::System::Log')->Log(
+                Priority => 'notice',
+                Message  => "Run WebHook for Queue $WebHookQueue"
+            );
+
             # error on empty Webhook URL
-            if ( !$WebhookURL )
-            {
+            if ( !$WebhookURL ) {
                 $Kernel::OM->Get('Kernel::System::Log')->Log(
                     Priority => 'notice',
                     Message  => "No WebhookURL defined for Queue $Ticket{Queue}"
                 );
                 return;
-                }
-  	       }
-	}
+            }
+        }
+    }
 
     # set notification theme color
-    my %Priorities = %{ $ConfigObject->Get( 'TeamsNotification::NotificationColor' ) };
+    my %Priorities =
+      %{ $ConfigObject->Get('TeamsNotification::NotificationColor') };
     my $PriorityColor = $Priorities{default};
-	for my $Priority ( sort keys %Priorities )   
-	{
-		if ( $Ticket{Priority} eq $Priority ) {
-		    $PriorityColor = $Priorities{$Priority};
-  	       }
-	}
+    for my $Priority ( sort keys %Priorities ) {
+        if ( $Ticket{Priority} eq $Priority ) {
+            $PriorityColor = $Priorities{$Priority};
+        }
+    }
 
     # encode utf-8
-    $Article{From} = Encode::encode("utf8", $Article{From});
-    $Ticket{Title} = Encode::encode("utf8", $Ticket{Title});
-    $Ticket{UserName} = Encode::encode("utf8", $Ticket{UserName});
+    $Article{From}    = Encode::encode( "utf8", $Article{From} );
+    $Ticket{Title}    = Encode::encode( "utf8", $Ticket{Title} );
+    $Ticket{UserName} = Encode::encode( "utf8", $Ticket{UserName} );
 
-    # escape double quotes 
-    $Article{From} =~ s/\"/\\"/g;
-    $Ticket{Title} =~ s/\"/\\"/g;
+    # escape double quotes
+    $Article{From}    =~ s/\"/\\"/g;
+    $Ticket{Title}    =~ s/\"/\\"/g;
     $Ticket{UserName} =~ s/\"/\\"/g;
 
-    my $ua = LWP::UserAgent->new;
-    my $req = HTTP::Request->new(POST => $WebhookURL);
-    $req->header('content-type' => 'application/json');
+    my $ua  = LWP::UserAgent->new;
+    my $req = HTTP::Request->new( POST => $WebhookURL );
+    $req->header( 'content-type' => 'application/json' );
 
     # get agent logo
-    my $NotificationImage = $ConfigObject->Get('TeamsNotification::NotificationImage');
-    my %AgentLoginLogo = %{ $ConfigObject->Get('AgentLoginLogo') };
+    my $NotificationImage =
+      $ConfigObject->Get('TeamsNotification::NotificationImage');
+
+    # my %AgentLoginLogo = %{ $ConfigObject->Get('AgentLoginLogo') };
     my $ActivityImage;
-    
-    if ( $NotificationImage ) {
-        $ActivityImage = "$SystemHTTP://$SystemFQDN$WebPath$NotificationImage";
-    } else {
-        $ActivityImage = "$SystemHTTP://$SystemFQDN$WebPath$AgentLoginLogo{URL}";
-    }
+
+    # if ( $NotificationImage ) {
+    $ActivityImage = "$SystemHTTP://$SystemFQDN$WebPath$NotificationImage";
+
+ # } else {
+ #     $ActivityImage = "$SystemHTTP://$SystemFQDN$WebPath$AgentLoginLogo{URL}";
+ # }
 
     # add POST data to HTTP request body
     my $post_data_large = "{
-		\"\@context\": \"https://schema.org/extensions\",
-		\"\@type\": \"MessageCard\",
-		\"themeColor\": \"$PriorityColor\",
+        \"\@context\": \"https://schema.org/extensions\",
+        \"\@type\": \"MessageCard\",
+        \"themeColor\": \"$PriorityColor\",
         \"summary\": \"Ticket Update\",
         \"title\": \"__Ticket Update__: $Ticket{Title}\",
-		\"sections\": [{
-			\"activityTitle\": \"$Article{From}\",
-			\"activitySubtitle\": \"$Article{SenderType}\",
-			\"activityImage\": \"$ActivityImage\",	
+        \"sections\": [{
+            \"activityTitle\": \"$Article{From}\",
+            \"activitySubtitle\": \"$Article{SenderType}\",
+            \"activityImage\": \"$ActivityImage\",	
                 \"facts\": [{ 
-					\"name\": \"Ticket Number\", 
-					\"value\": \"$TicketHook$Ticket{TicketNumber}\" 
-				}, { 
-					\"name\": \"Assignee\", 
-					\"value\": \"$Ticket{UserName}\" 
-				}, { 
-					\"name\": \"Queue\", 
-					\"value\": \"$Ticket{Queue}\" 
-				}, { 
-					\"name\": \"Status\", 
-					\"value\": \"$Ticket{State}\" 
-				}, { 
-					\"name\": \"Priority\", 
-					\"value\": \"$Ticket{Priority}\" 
-				}]
+                    \"name\": \"Ticket Number\", 
+                    \"value\": \"$TicketHook$Ticket{TicketNumber}\" 
+                }, { 
+                    \"name\": \"Assignee\", 
+                    \"value\": \"$Ticket{UserName}\" 
+                }, { 
+                    \"name\": \"Queue\", 
+                    \"value\": \"$Ticket{Queue}\" 
+                }, { 
+                    \"name\": \"Status\", 
+                    \"value\": \"$Ticket{State}\" 
+                }, { 
+                    \"name\": \"Priority\", 
+                    \"value\": \"$Ticket{Priority}\" 
+                }]
         }],
         \"markdown\" : \"true\",
         \"potentialAction\": [{        
-					\"\@type\": \"OpenUri\", 
-					\"name\": \"View in Helpdesk\",
+                    \"\@type\": \"OpenUri\", 
+                    \"name\": \"View in Helpdesk\",
                         \"targets\": [{ 
-					        \"os\": \"default\", 
-					        \"uri\": \"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}\" 
-					        }
+                            \"os\": \"default\", 
+                            \"uri\": \"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}\" 
+                            }
                 ]
-			}
-		]
-	}";
+            }
+        ]
+    }";
 
-    my $post_data_medium = "{
-		\"\@context\": \"https://schema.org/extensions\",
-		\"\@type\": \"MessageCard\",
-		\"themeColor\": \"$PriorityColor\",
-        \"summary\": \"Ticket Update\",
-		\"sections\": [{
-			\"activityTitle\": \"__Ticket Update__ [$TicketHook$Ticket{TicketNumber}]: $Ticket{Title}\",
-			\"activitySubtitle\": \"$Article{From} ($Article{SenderType})\",
-            \"activityImage\": \"$ActivityImage\",
-                \"facts\": [{ 
-					\"name\": \"Assignee\", 
-					\"value\": \"$Ticket{UserName}\" 
-				}, { 
-					\"name\": \"Queue\", 
-					\"value\": \"$Ticket{Queue}\" 
-				}, { 
-					\"name\": \"Status\", 
-					\"value\": \"$Ticket{State}\" 
-				}, { 
-					\"name\": \"Priority\", 
-					\"value\": \"$Ticket{Priority}\" 
-				}]
-        }],
-        \"markdown\" : \"true\",
-        \"potentialAction\": [{        
-					\"\@type\": \"OpenUri\", 
-					\"name\": \"View in Helpdesk\",
-                        \"targets\": [{ 
-					        \"os\": \"default\", 
-					        \"uri\": \"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}\" 
-					        }
+    my %post_data_medium = (
+        '@context'   => 'https://schema.org/extensions',
+        '@type'      => 'MessageCard',
+        'themeColor' => "$PriorityColor",
+        'summary'    => 'Chamado Criado',
+        'sections'   => [
+            {
+                'activityTitle' =>
+"__Chamado Criado__ [$TicketHook$Ticket{TicketNumber}]: $Ticket{Title}",
+                'activitySubtitle' => "$Article{From} ($Article{SenderType})",
+                'activityImage'    => "$ActivityImage",
+                'facts'            => [
+                    {
+                        'name'  => 'Atendente',
+                        'value' => "$Ticket{UserName}"
+                    },
+                    {
+                        'name'  => "Fila",
+                        'value' => "$Ticket{Queue}"
+                    },
+                    {
+                        'name'  => "Status",
+                        'value' => "$Ticket{State}"
+                    },
+                    {
+                        'name'  => "Prioridade",
+                        'value' => "$Ticket{Priority}"
+                    }
                 ]
-			}
-		]
-	}";
+            }
+        ],
+        'markdown' => 'true',
+        'potentialAction' => [
+            {
+                '@type'   => 'OpenUri',
+                'name'    => 'View in Helpdesk',
+                'targets' => [
+                    {
+                        'os'  => 'default',
+                        'uri' =>
+"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}"
+                    }
+                ]
+            }
+        ]
+    );
+
+# my $post_data_medium = "{
+# 	\"\@context\": \"https://schema.org/extensions\",
+# 	\"\@type\": \"MessageCard\",
+# 	\"themeColor\": \"$PriorityColor\",
+#     \"summary\": \"Chamado Criado\",
+# 	\"sections\": [{
+# 		\"activityTitle\": \"__Chamado Criado__ [$TicketHook$Ticket{TicketNumber}]: $Ticket{Title}\",
+# 		\"activitySubtitle\": \"$Article{From} ($Article{SenderType})\",
+#         \"activityImage\": \"$ActivityImage\",
+#             \"facts\": [{
+# 				\"name\": \"Proprietário\",
+# 				\"value\": \"$Ticket{UserName}\"
+# 			}, {
+# 				\"name\": \"Fila\",
+# 				\"value\": \"$Ticket{Queue}\"
+# 			}, {
+# 				\"name\": \"Status\",
+# 				\"value\": \"$Ticket{State}\"
+# 			}, {
+# 				\"name\": \"Prioridate\",
+# 				\"value\": \"$Ticket{Priority}\"
+# 			}]
+#     }],
+#     \"markdown\" : \"true\",
+#     \"potentialAction\": [{
+# 				\"\@type\": \"OpenUri\",
+# 				\"name\": \"View in Helpdesk\",
+#                     \"targets\": [{
+# 				        \"os\": \"default\",
+# 				        \"uri\": \"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}\"
+# 				        }
+#             ]
+# 		}
+# 	]
+# }";
 
     my $post_data_small = "{
-		\"\@context\": \"https://schema.org/extensions\",
-		\"\@type\": \"MessageCard\",
-		\"themeColor\": \"$PriorityColor\",
+        \"\@context\": \"https://schema.org/extensions\",
+        \"\@type\": \"MessageCard\",
+        \"themeColor\": \"$PriorityColor\",
         \"summary\": \"Ticket Update\",
-		\"sections\": [{
-			\"activityTitle\": \"__Ticket Update__: $Ticket{Title}\",
-			\"activitySubtitle\": \"$Article{From} ($Article{SenderType})\",
+        \"sections\": [{
+            \"activityTitle\": \"__Ticket Update__: $Ticket{Title}\",
+            \"activitySubtitle\": \"$Article{From} ($Article{SenderType})\",
             \"activityImage\": \"$ActivityImage\",
             \"text\": \"New message for Ticket __$TicketHook$Ticket{TicketNumber}__ in Queue __$Ticket{Queue}__, State is __$Ticket{State}__ and Priotity is __$Ticket{Priority}__. Current Assignee is __$Ticket{UserName}__.\"
         }],
         \"markdown\" : \"true\",
         \"potentialAction\": [{        
-					\"\@type\": \"OpenUri\", 
-					\"name\": \"View in Helpdesk\",
+                    \"\@type\": \"OpenUri\", 
+                    \"name\": \"View in Helpdesk\",
                         \"targets\": [{ 
-					        \"os\": \"default\", 
-					        \"uri\": \"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}\" 
-					        }
+                            \"os\": \"default\", 
+                            \"uri\": \"$SystemHTTP://$SystemFQDN/$SystemAlias/index.pl?Action=AgentTicketZoom;TicketID=$Ticket{TicketID}#$Article{ArticleID}\" 
+                            }
                 ]
-			}
-		]
-	}";
+            }
+        ]
+    }";
 
+    my $teste = $JSONObject->Encode( Data => \%post_data_medium, SortKeys => 0 );
     # POST
     if ( $ViewNotification eq 'large' ) {
         $req->content($post_data_large);
-        }
-        elsif ( $ViewNotification eq 'medium' ) {
-            $req->content($post_data_medium);
-            }
-            elsif ( $ViewNotification eq 'small' ) {
-                $req->content($post_data_small);
-                }
+    }
+    elsif ( $ViewNotification eq 'medium' ) {
+        
+        my $JSONString = $JSONObject->Encode( Data => \%post_data_medium, SortKeys => 0 );
+        
+        $req->content($JSONString);
+    }
+    elsif ( $ViewNotification eq 'small' ) {
+        $req->content($post_data_small);
+    }
 
     my $resp = $ua->request($req);
-    if ($resp->is_success) {
-      my $message = $resp->decoded_content;
-      $LogObject->Log(
-          Priority => 'notice',
-          Message  => "Run TeamsNotification event module,Received reply: $message" ,
-      );
+    if ( $resp->is_success ) {
+        my $message = $resp->decoded_content;
+        $LogObject->Log(
+            Priority => 'error',
+            Message  =>
+              "Run TeamsNotification event module,Received reply: $message",
+        );
     }
     else {
-      $LogObject->Log(
-        Priority => 'notice',
-        Message  => "RHTTP POST error code: $resp->code" ,
-      );
-      $LogObject->Log(
-        Priority => 'notice',
-        Message  => "RHTTP POST error message: $resp->message" ,
-      );
+        $LogObject->Log(
+            Priority => 'error',
+            Message  => 'RHTTP EROR' . Dumper($resp->message),
+        );
+        $LogObject->Log(
+            Priority => 'error',
+            Message  => "RHTTP POST error code: $resp->code",
+        );
+        $LogObject->Log(
+            Priority => 'error',
+            Message  => "RHTTP POST error message: $resp->message",
+        );
     }
 
     return 1;
